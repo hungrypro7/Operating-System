@@ -5,8 +5,8 @@
  * 프로그램을 수정할 경우 날짜, 학과, 학번, 이름, 수정 내용을 기록한다.
  * --------------한양대학교 ERICA ICT융합학부 2019098068 이찬영------------------
  * 05.09
- * CAE 명령어, 즉 atomic_compare_exchange_weak() 를 이용하여 생산자와 소비자가 동시에 접근하지 않게 스핀락을 구현해 동기화를 하였습니다.
- * (CODE LINE : 43, 53~56, 80, 94~97, 125)
+ * atomic_compare_exchange_weak(), 즉 CAE 명령어를 이용하여 생산자와 소비자가 동시에 접근하지 않게 스핀락을 구현해 동기화를 하였습니다.
+ * (CODE LINE : 43, 53~56, 72, 81, 95~98, 109, 118, 127)
  * 공유버퍼 (bounded-buffer) 문제
  */
 #include <stdio.h>
@@ -69,14 +69,15 @@ void *producer(void *arg)
                 produced++;
             }
             else {
+                lock = false;
                 printf("<P%d,%d>....ERROR: 아이템 %d 중복생산\n", i, item, item);
                 continue;
             }
-            /*
-             * 생산한 아이템을 출력한다.
-             */
-            printf("<P%d,%d>\n", i, item);
         }
+        /*
+         * 생산한 아이템을 출력한다.
+         */
+        printf("<P%d,%d>\n", i, item);
         lock = false;
     }
     pthread_exit(NULL);
@@ -100,12 +101,12 @@ void *consumer(void *arg)
              */
             item = buffer[out];
             out = (out + 1) % BUFSIZE;
-            counter--;
-        
+            counter--;   
             /*
              * 소비자를 기록하고 미생산 또는 중복소비 아닌지 검증한다.
              */        
             if (task_log[item][0] == -1) {
+                lock = false;
                 printf(RED"<C%d,%d>"RESET"....ERROR: 아이템 %d 미생산\n", i, item, item);
                 continue;
             }
@@ -114,16 +115,17 @@ void *consumer(void *arg)
                 consumed++;
             }
             else {
+                lock = false;
                 printf(RED"<C%d,%d>"RESET"....ERROR: 아이템 %d 중복소비\n", i, item, item);
                 continue;
             }
-            /*
-             * 소비할 아이템을 빨간색으로 출력한다.
-             */
-                printf(RED"<C%d,%d>"RESET"\n", i, item);
-            }
-            lock = false;
         }
+        /*
+         * 소비할 아이템을 빨간색으로 출력한다.
+         */
+        printf(RED"<C%d,%d>"RESET"\n", i, item);
+        lock = false;
+    }
     pthread_exit(NULL);
 }
 
@@ -156,7 +158,7 @@ int main(void)
      * 스레드가 출력하는 동안 1 밀리초 쉰다.
      * 이 시간으로 스레드의 출력량을 조절한다.
      */
-    usleep(1000);
+    usleep(1000);       // 이 부분 설정을 통해 전반적인 item 개수를 조정할 수 있습니다.
 
     /*
      * 스레드가 자연스럽게 무한 루프를 빠져나올 수 있게 한다.
