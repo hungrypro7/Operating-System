@@ -5,15 +5,16 @@
  * 프로그램을 수정할 경우 날짜, 학과, 학번, 이름, 수정 내용을 기록한다.
  * --------------한양대학교 ERICA ICT융합학부 2019098068 이찬영------------------
  * 05.09
- * CAE 명령어, 즉 atomic_compare_exchange_weak() 를 이용하여 여러 개의 스레드가 정해진 차례 안에서 
+ * atomic_compare_exchange_weak, 즉 CAE 명령어를 사용하여 여러 개의 스레드가 정해진 차례 안에서 
  * 락을 얻을 수 있도록 스핀락을 구현해 동기화를 하였습니다.
- * (CODE LINE : 44~46, 50, 56, 61)
+ * (CODE LINE : 36, 45~52, 64~72)
  * 유한대기 (bounded-waiting) 문제
  */
 #include <stdio.h>
 #include <stdbool.h>
 #include <unistd.h>
 #include <pthread.h>
+
 #include <stdatomic.h>
 
 #define N 8             /* 스레드 개수 */
@@ -29,9 +30,11 @@ char *color[N+1] = {"\e[0;30m","\e[0;31m","\e[0;32m","\e[0;33m","\e[0;34m","\e[0
  * waiting[i]는 스레드 i가 임계구역에 들어가기 위해 기다리고 있음을 나타낸다.
  * alive 값이 false가 될 때까지 스레드 내의 루프가 무한히 반복된다.
  */
-bool waiting[N];    // 스레드 i가 임계 영역에 들어가기 위해 기다리고 있음을 나타냄
+bool waiting[N];
 bool alive = true;
-atomic_bool lock = false;   // 각 스레드는 임계 영역에 들어가기 위해 lock 변수를 체크함
+
+atomic_bool lock = false;
+
 /*
  * N 개의 스레드가 임계구역에 배타적으로 들어가기 위해 스핀락을 사용하여 동기화한다.
  */
@@ -39,26 +42,34 @@ atomic_bool lock = false;   // 각 스레드는 임계 영역에 들어가기 �
 void *worker(void *arg)
 {
     int i = *(int *)arg;
+    int j;
     
     while (alive) {
+        waiting[i] = true;
         bool expected = false;
-        while(!atomic_compare_exchange_weak(&lock, &expected, true))
+        while(waiting[i] && !atomic_compare_exchange_weak(&lock, &expected, true))
             expected = false;
+        waiting[i] = false;
         /*
          * 임계구역: 알파벳 문자를 한 줄에 40개씩 10줄 출력한다.
          */
-        if(waiting[i] != 1) {           // waiting[i]가 갱신되지 않고 그대로일 때
-            for (int k = 0; k < 400; ++k) {
-                printf("%s%c%s", color[i], 'A'+i, color[N]);
-                if ((k+1) % 40 == 0)
-                    printf("\n");
-            }
-            waiting[i] = 1;     // waiting[i]를 1로 갱신해 줌
+        for (int k = 0; k < 400; ++k) {
+          printf("%s%c%s", color[i], 'A'+i, color[N]);
+          if ((k+1) % 40 == 0)
+            printf("\n");
         }
         /*
          * 임계구역이 성공적으로 종료되었다.
          */
-        lock = false;
+        j = (i + 1) % N;
+        while((j != i) && !waiting[j]) {
+            j = (j + 1) % N;
+        }
+        if(j == i) {      /* 아무도 기다리는 프로세스가 없을 때 */
+            lock = false;
+        }
+        else            /* 기다리는 프로세스가 있을 때 */
+            waiting[j] = false;
     }
     pthread_exit(NULL);
 }
@@ -72,7 +83,6 @@ int main(void)
      * N 개의 자식 스레드를 생성한다.
      */
     for (i = 0; i < N; ++i) {
-        waiting[i] = 0;             // waiting[i]를 0으로 초기화 해 줌
         id[i] = i;
         pthread_create(tid+i, NULL, worker, id+i);
     }
