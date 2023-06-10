@@ -22,23 +22,25 @@
  * 흡연자 문제에서 사용하는 네 가지 세마포
  */
 sem_t *tabacco, *paper, *matches, *done;
-
 /*
  * 말린 담배잎을 잘게 썰어 놓은 일명 연초만 가지고 있는 흡연자
  */
 void *tabacco_smoker(void *arg)
 {
     while (true) {
-        sem_wait(paper);
-        sem_wait(matches);
+        sem_wait(paper);      // 종이 집음, acquire semaphore
+        if(sem_trywait(matches) == 0) {       // 성냥 집음, matches 값이 0이 아니면 0을 반환
         /*
          * 담배를 피운다.
          */
-        printf(TABACCO" 흡연자\n");
+          printf(TABACCO" 흡연자\n");
         /*
          * 다 피웠음을 에이전트에게 알린다.
          */
-        sem_post(done);     // ++1
+          sem_post(done);
+        } else {        // 성냥 집지 못했다면 종이를 내려놓음, release semaphore
+          sem_post(paper);
+        }
     }
 }
 
@@ -48,16 +50,19 @@ void *tabacco_smoker(void *arg)
 void *paper_smoker(void *arg)
 {
     while (true) {
-        sem_wait(tabacco);
         sem_wait(matches);
+        if(sem_trywait(tabacco) == 0) {
         /*
          * 담배를 피운다.
          */
-        printf(PAPER" 흡연자\n");
+          printf(PAPER" 흡연자\n");
         /*
          * 다 피웠음을 에이전트에게 알린다.
          */
-        sem_post(done);
+          sem_post(done);
+        } else {
+          sem_post(matches);
+        }
     }
 }
 
@@ -68,15 +73,18 @@ void *matches_smoker(void *arg)
 {
     while (true) {
         sem_wait(tabacco);
-        sem_wait(paper);
+        if(sem_trywait(paper) == 0) {
         /*
          * 담배를 피운다.
          */
-        printf(MATCH" 흡연자\n");
+          printf(MATCH" 흡연자\n");
         /*
          * 다 피웠음을 에이전트에게 알린다.
          */
-        sem_post(done);
+          sem_post(done);
+        } else {
+          sem_post(tabacco);
+        }
     }
 }
 
